@@ -14,9 +14,10 @@ connectDB();
 
 // CORS configuration
 app.use(cors({
-  origin: '*', // Allow all origins during development
+  origin: ['http://localhost:3000', 'https://mpaonlinebackend.onrender.com'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
 // Middleware
