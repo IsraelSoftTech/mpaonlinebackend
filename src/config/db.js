@@ -1,19 +1,34 @@
-const mysql = require('mysql2');
-const dotenv = require('dotenv');
+const mongoose = require('mongoose');
 
-dotenv.config();
+const connectDB = async () => {
+  try {
+    console.log('Attempting to connect to MongoDB...');
+    console.log('Connection string:', process.env.MONGODB_URI);
+    
+    const conn = await mongoose.connect(process.env.MONGODB_URI);
+    
+    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    console.log('Database name:', conn.connection.name);
+    
+    // Log when database is ready
+    mongoose.connection.on('connected', () => {
+      console.log('Mongoose connected to DB');
+    });
+    
+    // Log any errors after initial connection
+    mongoose.connection.on('error', (err) => {
+      console.error('Mongoose connection error:', err);
+    });
+    
+    // Log when disconnected
+    mongoose.connection.on('disconnected', () => {
+      console.log('Mongoose disconnected from DB');
+    });
+    
+  } catch (error) {
+    console.error('MongoDB connection error:', error.message);
+    process.exit(1);
+  }
+};
 
-const pool = mysql.createPool({
-  host: 'localhost',
-  user: 'root', // default XAMPP username
-  password: '', // default XAMPP password is empty
-  database: 'mpasat_admission',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-});
-
-// Convert pool to promise-based
-const promisePool = pool.promise();
-
-module.exports = promisePool; 
+module.exports = connectDB; 

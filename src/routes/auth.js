@@ -2,32 +2,44 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const db = require('../config/db');
+const User = require('../models/User');
 
 // Signup Route
 router.post('/signup', async (req, res) => {
   try {
+    console.log('Received signup request with data:', req.body);
     const { fullName, username, email, phone, password } = req.body;
 
     // Check if user already exists
-    const [existingUsers] = await db.query(
-      'SELECT * FROM users WHERE username = ? OR email = ?',
-      [username, email]
-    );
+    console.log('Checking for existing user...');
+    const existingUser = await User.findOne({
+      $or: [{ username: username.toLowerCase() }, { email: email.toLowerCase() }]
+    });
 
-    if (existingUsers.length > 0) {
+    if (existingUser) {
+      console.log('User already exists:', existingUser);
       return res.status(400).json({ message: 'Username or email already exists' });
     }
 
     // Hash password
+    console.log('Hashing password...');
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Insert new user
-    const [result] = await db.query(
-      'INSERT INTO users (full_name, username, email, phone, password, role) VALUES (?, ?, ?, ?, ?, ?)',
-      [fullName, username, email, phone, hashedPassword, 'user']
-    );
+    // Create new user
+    console.log('Creating new user...');
+    const user = new User({
+      fullName,
+      username: username.toLowerCase(),
+      email: email.toLowerCase(),
+      phone,
+      password: hashedPassword,
+      role: 'user'
+    });
+
+    console.log('Saving user to database...');
+    await user.save();
+    console.log('User saved successfully:', user);
 
     res.status(201).json({ message: 'Account Created Successfully' });
   } catch (error) {
@@ -42,16 +54,11 @@ router.post('/signin', async (req, res) => {
     const { username, password } = req.body;
 
     // Find user
-    const [users] = await db.query(
-      'SELECT * FROM users WHERE username = ?',
-      [username]
-    );
+    const user = await User.findOne({ username: username.toLowerCase() });
 
-    if (users.length === 0) {
+    if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
-
-    const user = users[0];
 
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password);
@@ -61,7 +68,7 @@ router.post('/signin', async (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
+      { id: user._id, username: user.username, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
@@ -70,7 +77,7 @@ router.post('/signin', async (req, res) => {
       message: 'Login successful',
       token,
       user: {
-        id: user.id,
+        id: user._id,
         username: user.username,
         email: user.email,
         role: user.role
@@ -89,15 +96,12 @@ router.post('/verify-user', async (req, res) => {
     
     console.log('Attempting to verify user:', { username, email });
 
-    // Find user with case-insensitive comparison
-    const [users] = await db.query(
-      'SELECT * FROM users WHERE LOWER(username) = LOWER(?) AND LOWER(email) = LOWER(?)',
-      [username, email]
-    );
+    const user = await User.findOne({
+      username: username.toLowerCase(),
+      email: email.toLowerCase()
+    });
 
-    console.log('Database query result:', users);
-
-    if (users.length === 0) {
+    if (!user) {
       console.log('No user found with these credentials');
       return res.status(404).json({ message: 'User not found or email does not match' });
     }
@@ -106,8 +110,8 @@ router.post('/verify-user', async (req, res) => {
     res.json({ 
       message: 'User verified successfully',
       user: {
-        username: users[0].username,
-        email: users[0].email
+        username: user.username,
+        email: user.email
       }
     });
   } catch (error) {
@@ -121,13 +125,12 @@ router.post('/reset-password', async (req, res) => {
   try {
     const { username, email, newPassword } = req.body;
 
-    // Verify user exists and matches email
-    const [users] = await db.query(
-      'SELECT * FROM users WHERE username = ? AND email = ?',
-      [username, email]
-    );
+    const user = await User.findOne({
+      username: username.toLowerCase(),
+      email: email.toLowerCase()
+    });
 
-    if (users.length === 0) {
+    if (!user) {
       return res.status(404).json({ message: 'User not found or email does not match' });
     }
 
@@ -136,10 +139,8 @@ router.post('/reset-password', async (req, res) => {
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
     // Update password
-    await db.query(
-      'UPDATE users SET password = ? WHERE username = ? AND email = ?',
-      [hashedPassword, username, email]
-    );
+    user.password = hashedPassword;
+    await user.save();
 
     res.json({ message: 'Password updated successfully' });
   } catch (error) {
